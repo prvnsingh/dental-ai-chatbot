@@ -1,25 +1,130 @@
+# ================================
+# Dental AI Chatbot - Docker Compose Configuration
+# ================================
+#
+# This Docker Compose setup provides:
+# - PostgreSQL database with persistent storage
+# - Database administration interface (Adminer)
+# - Automated database schema initialization
+# - Development and production configurations
+#
+# Usage:
+#   Development: docker-compose up -d
+#   Production:  docker-compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+#
+# @version 1.0.0
+# @author Dental AI Team
 
 version: "3.9"
+
 services:
+  # ================================
+  # PostgreSQL Database Service
+  # ================================
   db:
-    image: postgres:13
-    container_name: dental_db
+    image: postgres:15-alpine
+    container_name: dental_ai_db
     restart: unless-stopped
+
+    # Database configuration
     environment:
-      POSTGRES_DB: dental
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: ${DB_NAME:-dental_ai}
+      POSTGRES_USER: ${DB_USER:-postgres}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-postgres}
       POSTGRES_HOST_AUTH_METHOD: md5
+
+      # Performance tuning
+      POSTGRES_SHARED_PRELOAD_LIBRARIES: pg_stat_statements
+      POSTGRES_MAX_CONNECTIONS: 100
+      POSTGRES_SHARED_BUFFERS: 128MB
+      POSTGRES_EFFECTIVE_CACHE_SIZE: 512MB
+
+    # Network configuration
     ports:
-      - "5432:5432"
+      - "${DB_PORT:-5432}:5432"
+
+    # Persistent storage and initialization
     volumes:
       - pgdata:/var/lib/postgresql/data
       - ./database/schema.sql:/docker-entrypoint-initdb.d/01_schema.sql:ro
+      - ./database/chat_logs.sql:/docker-entrypoint-initdb.d/02_chat_logs.sql:ro
+
+    # Health monitoring
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U ${DB_USER:-postgres} -d ${DB_NAME:-dental_ai}" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+    # Resource limits (adjust based on your system)
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+        reservations:
+          memory: 256M
+
+    # Logging configuration
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # ================================
+  # Database Administration Interface
+  # ================================
   adminer:
-    image: adminer:latest
-    container_name: dental_adminer
+    image: adminer:4.8.1-standalone
+    container_name: dental_ai_adminer
     restart: unless-stopped
+
+    # Network configuration
     ports:
-      - "8080:8080"
+      - "${ADMINER_PORT:-8080}:8080"
+
+    # Environment configuration
+    environment:
+      ADMINER_DEFAULT_SERVER: db
+      ADMINER_DESIGN: nette
+
+    # Service dependencies
+    depends_on:
+      db:
+        condition: service_healthy
+
+    # Resource limits
+    deploy:
+      resources:
+        limits:
+          memory: 64M
+        reservations:
+          memory: 32M
+
+    # Logging configuration
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "5m"
+        max-file: "2"
+
+# ================================
+# Persistent Storage Volumes
+# ================================
 volumes:
   pgdata:
+    name: dental_ai_postgres_data
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${PWD}/data/postgres
+
+# ================================
+# Network Configuration
+# ================================
+networks:
+  default:
+    name: dental_ai_network
+    driver: bridge

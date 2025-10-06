@@ -1,6 +1,44 @@
+# ================================
+# Dental AI Chatbot - Git Ignore Rules
+# ================================
+#
+# This file specifies intentionally untracked files that Git should ignore.
+# Files already tracked by Git are not affected.
+#
+# @version 1.0.0
+
+# ================================
+# Environment & Secrets
+# ================================
+.env
+.env.local
+.env.production
+.env.staging
+*.key
+*.pem
+secrets/
+
+# ================================
+# Node.js Dependencies & Build
+# ================================
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# Build outputs
+dist/
+build/
+out/
+
+# ================================
+# Python Environment & Cache
+# ================================
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
-*.py[codz]
+*.py[cod]
 *$py.class
 
 # C extensions

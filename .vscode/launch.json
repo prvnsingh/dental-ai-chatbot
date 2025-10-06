@@ -1,0 +1,122 @@
+{
+  // ================================
+  // Dental AI Chatbot - VS Code Launch Configuration
+  // ================================
+  //
+  // This file defines debug configurations for different components
+  // of the dental AI chatbot application stack.
+  //
+  // @version 1.0.0
+  "version": "0.2.0",
+  "configurations": [
+    {
+      // ================================
+      // Backend Node.js Debugging
+      // ================================
+      "name": "Debug Backend Server",
+      "type": "node",
+      "request": "launch",
+      "program": "${workspaceFolder}/backend/server.js",
+      "cwd": "${workspaceFolder}/backend",
+      "env": {
+        "NODE_ENV": "development"
+      },
+      "envFile": "${workspaceFolder}/.env",
+      "console": "integratedTerminal",
+      "restart": true,
+      "runtimeArgs": [
+        "--inspect"
+      ],
+      "skipFiles": [
+        "<node_internals>/**"
+      ]
+    },
+    {
+      // ================================
+      // Python Service Debugging
+      // ================================
+      "name": "Debug Python AI Service",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${workspaceFolder}/python_service/main.py",
+      "cwd": "${workspaceFolder}/python_service",
+      "envFile": "${workspaceFolder}/.env",
+      "console": "integratedTerminal",
+      "justMyCode": false,
+      "args": []
+    },
+    {
+      // ================================
+      // Backend Tests Debugging
+      // ================================
+      "name": "Debug Backend Tests",
+      "type": "node",
+      "request": "launch",
+      "program": "${workspaceFolder}/backend/node_modules/.bin/jest",
+      "args": [
+        "--runInBand",
+        "--no-coverage",
+        "--verbose"
+      ],
+      "cwd": "${workspaceFolder}/backend",
+      "console": "integratedTerminal",
+      "envFile": "${workspaceFolder}/.env.test",
+      "skipFiles": [
+        "<node_internals>/**"
+      ]
+    },
+    {
+      // ================================
+      // Python Tests Debugging
+      // ================================
+      "name": "Debug Python Tests",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "pytest",
+      "args": [
+        "${workspaceFolder}/python_service/tests/",
+        "-v",
+        "--tb=short"
+      ],
+      "cwd": "${workspaceFolder}/python_service",
+      "console": "integratedTerminal",
+      "envFile": "${workspaceFolder}/.env.test",
+      "justMyCode": false
+    },
+    {
+      // ================================
+      // Frontend Development Server
+      // ================================
+      "name": "Launch Frontend Dev Server",
+      "type": "node",
+      "request": "launch",
+      "program": "${workspaceFolder}/frontend/node_modules/.bin/vite",
+      "args": [
+        "dev",
+        "--host"
+      ],
+      "cwd": "${workspaceFolder}/frontend",
+      "console": "integratedTerminal",
+      "envFile": "${workspaceFolder}/.env"
+    }
+  ],
+  // ================================
+  // Compound Configurations
+  // ================================
+  "compounds": [
+    {
+      "name": "Launch Full Stack",
+      "configurations": [
+        "Debug Backend Server",
+        "Debug Python AI Service",
+        "Launch Frontend Dev Server"
+      ],
+      "stopAll": true,
+      "presentation": {
+        "hidden": false,
+        "group": "fullstack",
+        "order": 1
+      }
+    }
+  ]
+}

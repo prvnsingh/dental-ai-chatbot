@@ -1,82 +1,196 @@
-// backend/server.js
-import 'dotenv/config'                   // ✅ load env first
+/**
+ * Dental AI Chatbot - Backend API Server
+ * 
+ * This Express.js server provides:
+ * - JWT-based authentication with secure password handling
+ * - Chatbot message processing via Python service integration
+ * - Appointment booking with conflict detection
+ * - Session management and message history
+ * - Rate limiting and security middleware
+ * 
+ * @version 1.0.0
+ * @author Dental AI Team
+ */
 
-import express from 'express'
+// Load environment variables first
+import 'dotenv/config'
+
+// Core Express and middleware imports
 import cors from 'cors'
-import helmet from 'helmet'
-import morgan from 'morgan'
+import express from 'express'
 import rateLimit from 'express-rate-limit'
+import helmet from 'helmet'
 import jwt from 'jsonwebtoken'
-import { query } from './db.js'
-import {
-  createUser,
-  authenticateUser,
-  getUserById,
-  updateUser,
-  changePassword,
-  generateToken,
-  authMiddleware,
-  optionalAuthMiddleware,
-  AuthError
-} from './auth.js'
+import morgan from 'morgan'
 
+// Database and authentication imports
+import {
+  authenticateUser,
+  AuthError,
+  authMiddleware,
+  changePassword,
+  createUser,
+  generateToken,
+  getUserById,
+  updateUser
+} from './auth.js'
+import { query } from './db.js'
+
+// Application configuration
 const app = express()
 const PORT = process.env.PORT || 8000
 const JWT_SECRET = process.env.JWT_SECRET || 'dev_secret'
 const PY_SERVICE_URL = process.env.PY_SERVICE_URL || 'http://localhost:8001'
 
+// ================================
+// Middleware Configuration
+// ================================
+
+// Security: Add security headers and prevent common attacks
 app.use(helmet())
+
+// CORS: Allow cross-origin requests from frontend
 app.use(cors())
+
+// Body parsing: Enable JSON request body parsing
 app.use(express.json())
+
+// Logging: HTTP request logging for development/debugging
 app.use(morgan('dev'))
 
-// tighter default rate limit (per IP)
-const limiter = rateLimit({ windowMs: 60 * 1000, max: 60 })
+// Rate limiting: Prevent abuse with 60 requests per minute per IP
+const limiter = rateLimit({
+  windowMs: 60 * 1000, // 1 minute window
+  max: 60,             // Maximum 60 requests per window
+  message: { error: 'Too many requests, please try again later' }
+})
 app.use(limiter)
 
-/* ---------- DB helpers ---------- */
-async function upsertUser(sub){
+// ================================
+// Database Helper Functions
+// ================================
+/**
+ * Creates or updates a demo user for legacy token support
+ * @param {string} sub - User identifier (legacy format)
+ * @returns {Promise<number>} User ID
+ */
+async function upsertUser(sub) {
   const email = `${sub}@demo.local`
   const name = 'Demo User'
-  const res = await query(
-    `INSERT INTO users (email, password_hash, name)
-     VALUES ($1, 'hash_demo', $2)
-     ON CONFLICT (email) DO UPDATE SET name=EXCLUDED.name
-     RETURNING id`,
-    [email, name]
-  )
-  return res.rows[0].id
+
+  try {
+    const res = await query(
+      `INSERT INTO users (email, password_hash, name)
+       VALUES ($1, 'hash_demo', $2)
+       ON CONFLICT (email) DO UPDATE SET name=EXCLUDED.name
+       RETURNING id`,
+      [email, name]
+    )
+    return res.rows[0].id
+  } catch (error) {
+    console.error('Failed to upsert user:', error)
+    throw error
+  }
 }
 
-async function ensureSession(userId, sessionToken){
-  if(!sessionToken) return null
-  const found = await query(`SELECT id FROM chat_sessions WHERE session_token=$1`, [sessionToken])
-  if(found.rowCount > 0) return found.rows[0].id
-  const ins = await query(
-    `INSERT INTO chat_sessions (user_id, session_token) VALUES ($1, $2) RETURNING id`,
-    [userId, sessionToken]
-  )
-  return ins.rows[0].id
+/**
+ * Ensures a chat session exists for the user and returns session ID
+ * @param {number} userId - Database user ID
+ * @param {string} sessionToken - Session token from client
+ * @returns {Promise<number|null>} Session ID or null if no token provided
+ */
+async function ensureSession(userId, sessionToken) {
+  if (!sessionToken) return null
+
+  try {
+    // Check if session already exists
+    const found = await query(
+      'SELECT id FROM chat_sessions WHERE session_token = $1',
+      [sessionToken]
+    )
+
+    if (found.rowCount > 0) {
+      return found.rows[0].id
+    }
+
+    // Create new session
+    const ins = await query(
+      'INSERT INTO chat_sessions (user_id, session_token) VALUES ($1, $2) RETURNING id',
+      [userId, sessionToken]
+    )
+    return ins.rows[0].id
+  } catch (error) {
+    console.error('Failed to ensure session:', error)
+    throw error
+  }
 }
 
-async function logMessage({ userId, sessionToken, role, content, meta={} }){
-  await query(
-    `INSERT INTO chat_messages (user_id, session_token, role, content, meta)
-     VALUES ($1, $2, $3, $4, $5)`,
-    [userId, sessionToken, role, content, meta]
-  )
+/**
+ * Logs a chat message to the database for conversation history
+ * @param {Object} params - Message parameters
+ * @param {number} params.userId - Database user ID
+ * @param {string} params.sessionToken - Session token
+ * @param {string} params.role - Message role ('user', 'assistant', 'system')
+ * @param {string} params.content - Message content
+ * @param {Object} params.meta - Optional metadata (appointment info, etc.)
+ */
+async function logMessage({ userId, sessionToken, role, content, meta = {} }) {
+  try {
+    await query(
+      `INSERT INTO chat_messages (user_id, session_token, role, content, meta)
+       VALUES ($1, $2, $3, $4, $5)`,
+      [userId, sessionToken, role, content, meta]
+    )
+  } catch (error) {
+    console.error('Failed to log message:', error)
+    // Don't throw - message logging shouldn't break the main flow
+  }
 }
 
-/* ---------- Health ---------- */
-app.get('/health', (_req, res) => res.json({ status: 'ok', service: 'backend' }))
+// ================================
+// Health Check Endpoints
+// ================================
 
+/**
+ * Backend service health check
+ * Used for monitoring, load balancer health checks, and service discovery
+ */
+app.get('/health', (_req, res) => {
+  res.json({
+    status: 'ok',
+    service: 'backend',
+    timestamp: new Date().toISOString(),
+    version: '1.0.0'
+  })
+})
+
+/**
+ * Python microservice health check (dependency health)
+ * Verifies that the LangChain/AI service is available and responsive
+ */
 app.get('/health/python', async (_req, res) => {
   try {
-    const r = await fetch(`${PY_SERVICE_URL}/health`)
-    const data = await r.json()
-    return res.json({ status: data.status || 'unknown' })
-  } catch (e){
-    return res.status(503).json({ status: 'down' })
+    const controller = new AbortController()
+    const timeoutId = setTimeout(() => controller.abort(), 5000) // 5 second timeout
+
+    const response = await fetch(`${PY_SERVICE_URL}/health`, {
+      signal: controller.signal
+    })
+    clearTimeout(timeoutId)
+
+    const data = await response.json()
+    return res.json({
+      status: data.status || 'unknown',
+      service: 'python_service',
+      url: PY_SERVICE_URL
+    })
+  } catch (error) {
+    console.error('Python service health check failed:', error.message)
+    return res.status(503).json({
+      status: 'down',
+      service: 'python_service',
+      error: 'Service unavailable'
+    })
   }
 })
 
@@ -165,7 +279,7 @@ app.put('/api/auth/profile', authMiddleware, async (req, res) => {
   try {
     const { name, phone, dateOfBirth } = req.body
     const updates = { name, phone, date_of_birth: dateOfBirth }
-    
+
     const user = await updateUser(req.user.sub, updates)
     res.json({ user })
   } catch (error) {
@@ -200,137 +314,267 @@ app.post('/api/auth/change-password', authMiddleware, async (req, res) => {
   }
 })
 
-/* ---------- Legacy Token (for demo/testing) ---------- */
+// ================================
+// Legacy Demo Token Endpoint
+// ================================
+
+/**
+ * Legacy token endpoint for demo/testing purposes only
+ * Creates a short-lived token without requiring registration
+ * @deprecated Use /api/auth/register and /api/auth/login for production
+ */
 app.post('/api/chatbot/token', async (_req, res) => {
   const payload = { sub: 'user_1', role: 'user' }
   const token = jwt.sign(payload, JWT_SECRET, { expiresIn: '5m' })
-  try { await upsertUser(payload.sub) } catch (e){ console.warn('Upsert user failed:', e?.message) }
-  res.json({ token, expires_in: 300 })
+
+  try {
+    await upsertUser(payload.sub)
+  } catch (error) {
+    console.warn('Upsert user failed:', error?.message)
+  }
+
+  res.json({
+    token,
+    expires_in: 300,
+    warning: 'This is a demo token. Use /api/auth/register for production.'
+  })
 })
 
-/* ---------- Legacy Auth (keeping for backward compatibility) ---------- */
-function auth(req, res, next){
-  const hdr = req.headers['authorization'] || ''
-  const token = hdr.startsWith('Bearer ') ? hdr.slice(7) : null
-  if(!token) return res.status(401).json({ error: 'missing token'})
+/**
+ * Legacy authentication middleware for backward compatibility
+ * @deprecated Use authMiddleware from auth.js for new endpoints
+ */
+function legacyAuth(req, res, next) {
+  const authHeader = req.headers['authorization'] || ''
+  const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : null
+
+  if (!token) {
+    return res.status(401).json({ error: 'Missing authorization token' })
+  }
+
   try {
     const decoded = jwt.verify(token, JWT_SECRET)
     req.user = decoded
     next()
-  } catch (e){
-    return res.status(401).json({ error: 'invalid token'})
+  } catch (error) {
+    return res.status(401).json({ error: 'Invalid or expired token' })
   }
 }
 
-/* ---------- Chat message ---------- */
-app.post('/api/chatbot/message', auth, async (req, res) => {
+// ================================
+// Chat & Messaging Endpoints
+// ================================
+
+/**
+ * Process chat message through Python AI service
+ * Handles conversation flow, appointment extraction, and response generation
+ */
+app.post('/api/chatbot/message', legacyAuth, async (req, res) => {
   try {
     const { message, session_id } = req.body || {}
-    if (!message) return res.status(400).json({ error: 'missing message' })
 
+    // Validate required fields
+    if (!message || typeof message !== 'string' || !message.trim()) {
+      return res.status(400).json({ error: 'Message is required and must be a non-empty string' })
+    }
+
+    // Get or create user and session
     const userId = await upsertUser(req.user?.sub || 'user_1')
     await ensureSession(userId, session_id)
 
-    // log user input
-    await logMessage({ userId, sessionToken: session_id, role: 'user', content: message })
+    // Log user input for conversation history
+    await logMessage({
+      userId,
+      sessionToken: session_id,
+      role: 'user',
+      content: message.trim()
+    })
 
-    const r = await fetch(`${PY_SERVICE_URL}/simulate`, {
+    // Forward message to Python AI service
+    const pythonResponse = await fetch(`${PY_SERVICE_URL}/simulate`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ message, user_id: req.user?.sub || 'user_1', session_id })
+      body: JSON.stringify({
+        message: message.trim(),
+        user_id: req.user?.sub || 'user_1',
+        session_id
+      })
     })
-    const data = await r.json()
 
-    // log assistant output
+    if (!pythonResponse.ok) {
+      throw new Error(`Python service returned ${pythonResponse.status}`)
+    }
+
+    const data = await pythonResponse.json()
+
+    // Extract assistant response and metadata
+    const assistantReply = data?.reply || data?.data?.reply || 'I apologize, I could not process that request.'
+    const appointmentCandidate = data?.appointment_candidate || data?.data?.appointment_candidate
+    const intent = data?.intent || data?.data?.intent || 'chat'
+    const needsConfirmation = data?.needs_confirmation ?? data?.data?.needs_confirmation ?? false
+
+    // Log assistant response for conversation history
     await logMessage({
       userId,
       sessionToken: session_id,
       role: 'assistant',
-      content: data?.reply || data?.data?.reply || '',
-      meta: data?.appointment_candidate || data?.data?.appointment_candidate
-        ? {
-            appointment_candidate: data?.appointment_candidate || data?.data?.appointment_candidate,
-            intent: data?.intent || data?.data?.intent,
-            needs_confirmation: data?.needs_confirmation ?? data?.data?.needs_confirmation ?? false
-          }
-        : { intent: data?.intent || data?.data?.intent || 'chat' }
+      content: assistantReply,
+      meta: appointmentCandidate ? {
+        appointment_candidate: appointmentCandidate,
+        intent,
+        needs_confirmation: needsConfirmation
+      } : { intent }
     })
 
     return res.json({ ok: true, data })
-  } catch (e) {
-    console.error(e)
-    return res.status(500).json({ error: 'failed to reach python service' })
+
+  } catch (error) {
+    console.error('Chat message processing error:', error)
+    return res.status(500).json({
+      error: 'Failed to process message',
+      message: 'Unable to reach AI service. Please try again later.'
+    })
   }
 })
 
-/* ---------- Confirm (DB persist) ---------- */
-app.post('/api/chatbot/confirm', auth, async (req, res) => {
+// ================================
+// Appointment Management Endpoints  
+// ================================
+
+/**
+ * Confirm or decline a proposed appointment
+ * Handles conflict detection and database persistence
+ */
+app.post('/api/chatbot/confirm', legacyAuth, async (req, res) => {
   try {
     const { session_id, scheduled_at, confirm } = req.body || {}
+
+    // Validate required fields
     if (!session_id || !scheduled_at) {
-      return res.status(400).json({ ok: false, error: 'bad_request', message: 'missing session_id or scheduled_at' })
-    }
-
-    // Validate scheduled_at
-    const ts = Date.parse(scheduled_at)
-    if (Number.isNaN(ts)) {
-      return res.status(400).json({ ok: false, error: 'bad_request', message: 'scheduled_at must be ISO8601' })
-    }
-
-    const userId = await upsertUser(req.user?.sub || 'user_1')
-    await ensureSession(userId, session_id)
-
-    // If user declined, just acknowledge
-    if (!confirm) {
-      return res.json({ ok: true, status: 'declined' })
-    }
-
-    // 🔒 Conflict check (prevent double-booking)
-    const conflict = await query(
-      `SELECT 1 FROM appointments
-       WHERE scheduled_at = $1 AND status = 'confirmed'
-       LIMIT 1`,
-      [scheduled_at]
-    )
-    if (conflict.rowCount > 0) {
-      return res.status(409).json({
+      return res.status(400).json({
         ok: false,
-        error: 'conflict',
-        message: 'That time is already booked. Please pick another slot.'
+        error: 'bad_request',
+        message: 'Both session_id and scheduled_at are required'
       })
     }
 
-    // Insert appointment
-    const ins = await query(
-      `INSERT INTO appointments (user_id, scheduled_at, status, notes)
-       VALUES ($1, $2, 'confirmed', 'Booked via chatbot')
-       RETURNING id, scheduled_at, status, created_at`,
-      [userId, scheduled_at]
-    )
+    // Validate appointment time format (ISO8601)
+    const appointmentTime = new Date(scheduled_at)
+    if (isNaN(appointmentTime.getTime())) {
+      return res.status(400).json({
+        ok: false,
+        error: 'bad_request',
+        message: 'scheduled_at must be a valid ISO8601 datetime string'
+      })
+    }
 
-    // Optional: log confirmation to chat history
-    try {
+    // Validate appointment is in the future
+    if (appointmentTime <= new Date()) {
+      return res.status(400).json({
+        ok: false,
+        error: 'bad_request',
+        message: 'Appointment time must be in the future'
+      })
+    }
+
+    // Get or create user and session
+    const userId = await upsertUser(req.user?.sub || 'user_1')
+    await ensureSession(userId, session_id)
+
+    // Handle decline case
+    if (!confirm) {
       await logMessage({
         userId,
         sessionToken: session_id,
         role: 'assistant',
-        content: `Confirmed your appointment for ${scheduled_at}.`,
-        meta: { appointment_id: ins.rows[0].id, status: 'confirmed' }
+        content: 'Appointment declined. Please let me know when you\'d like to schedule instead.',
+        meta: { action: 'declined', proposed_time: scheduled_at }
       })
-    } catch {}
+      return res.json({ ok: true, status: 'declined' })
+    }
 
-    return res.json({ ok: true, status: 'confirmed', appointment: ins.rows[0] })
-  } catch (e) {
-    console.error(e)
-    return res.status(500).json({ ok: false, error: 'server_error', message: 'failed to confirm appointment' })
+    // Check for scheduling conflicts (prevent double-booking)
+    const conflictCheck = await query(
+      `SELECT id, user_id FROM appointments
+       WHERE scheduled_at = $1 AND status = 'confirmed'
+       LIMIT 1`,
+      [scheduled_at]
+    )
+
+    if (conflictCheck.rowCount > 0) {
+      return res.status(409).json({
+        ok: false,
+        error: 'conflict',
+        message: 'That time slot is already booked. Please select a different time.'
+      })
+    }
+
+    // Create confirmed appointment
+    const appointmentResult = await query(
+      `INSERT INTO appointments (user_id, scheduled_at, status, notes)
+       VALUES ($1, $2, 'confirmed', 'Booked via AI chatbot')
+       RETURNING id, scheduled_at, status, created_at`,
+      [userId, scheduled_at]
+    )
+
+    const appointment = appointmentResult.rows[0]
+
+    // Log confirmation to chat history
+    await logMessage({
+      userId,
+      sessionToken: session_id,
+      role: 'assistant',
+      content: `✅ Appointment confirmed for ${new Date(scheduled_at).toLocaleString()}.`,
+      meta: {
+        appointment_id: appointment.id,
+        status: 'confirmed',
+        action: 'confirmed'
+      }
+    })
+
+    return res.json({
+      ok: true,
+      status: 'confirmed',
+      appointment: {
+        ...appointment,
+        formatted_time: new Date(scheduled_at).toLocaleString()
+      }
+    })
+
+  } catch (error) {
+    console.error('Appointment confirmation error:', error)
+    return res.status(500).json({
+      ok: false,
+      error: 'server_error',
+      message: 'Failed to process appointment confirmation'
+    })
   }
 })
 
-/* ---------- History for a session (single definition) ---------- */
-app.get('/api/chat_sessions/:session_id/messages', auth, async (req, res) => {
+// ================================
+// Chat History Management
+// ================================
+
+/**
+ * Retrieve conversation history for a specific session
+ * Returns messages in chronological order with metadata
+ */
+app.get('/api/chat_sessions/:session_id/messages', legacyAuth, async (req, res) => {
   try {
     const sessionId = req.params.session_id
+
+    // Validate session ID
+    if (!sessionId || typeof sessionId !== 'string') {
+      return res.status(400).json({
+        ok: false,
+        error: 'invalid_session_id',
+        message: 'Session ID is required and must be a valid string'
+      })
+    }
+
     const userId = await upsertUser(req.user?.sub || 'user_1')
+
+    // Retrieve conversation history
     const result = await query(
       `SELECT role, content, meta, created_at
        FROM chat_messages
@@ -338,33 +582,112 @@ app.get('/api/chat_sessions/:session_id/messages', auth, async (req, res) => {
        ORDER BY created_at ASC`,
       [userId, sessionId]
     )
-    res.json({ ok: true, messages: result.rows })
-  } catch (e) {
-    console.error(e)
-    res.status(500).json({ ok: false, error: 'failed_to_fetch_messages' })
+
+    res.json({
+      ok: true,
+      messages: result.rows,
+      count: result.rowCount,
+      session_id: sessionId
+    })
+
+  } catch (error) {
+    console.error('Message history retrieval error:', error)
+    res.status(500).json({
+      ok: false,
+      error: 'fetch_failed',
+      message: 'Failed to retrieve conversation history'
+    })
   }
 })
 
-/* ---------- Delete all messages for a session ---------- */
-app.delete('/api/chat_sessions/:session_id/messages', auth, async (req, res) => {
+/**
+ * Clear all messages for a specific chat session
+ * Used when user wants to start a fresh conversation
+ */
+app.delete('/api/chat_sessions/:session_id/messages', legacyAuth, async (req, res) => {
   try {
     const sessionId = req.params.session_id
+
+    // Validate session ID
+    if (!sessionId || typeof sessionId !== 'string') {
+      return res.status(400).json({
+        ok: false,
+        error: 'invalid_session_id',
+        message: 'Session ID is required and must be a valid string'
+      })
+    }
+
     const userId = await upsertUser(req.user?.sub || 'user_1')
-    await query(
+
+    // Delete all messages for the session
+    const result = await query(
       `DELETE FROM chat_messages WHERE user_id = $1 AND session_token = $2`,
       [userId, sessionId]
     )
-    res.json({ ok: true, deleted: true })
-  } catch (e) {
-    console.error(e)
-    res.status(500).json({ ok: false, error: 'failed_to_delete_messages' })
+
+    res.json({
+      ok: true,
+      deleted: true,
+      messages_deleted: result.rowCount,
+      session_id: sessionId
+    })
+
+  } catch (error) {
+    console.error('Message deletion error:', error)
+    res.status(500).json({
+      ok: false,
+      error: 'deletion_failed',
+      message: 'Failed to delete conversation history'
+    })
   }
 })
 
-/* ---------- Error ---------- */
+// ================================
+// Error Handling & Server Startup
+// ================================
+
+/**
+ * Global error handler for unhandled errors
+ * Logs errors for debugging and returns safe error response to client
+ */
 app.use((err, _req, res, _next) => {
-  console.error('Unexpected error:', err)
-  res.status(500).json({ error: 'server error' })
+  console.error('Unhandled server error:', {
+    message: err.message,
+    stack: err.stack,
+    timestamp: new Date().toISOString()
+  })
+
+  res.status(500).json({
+    error: 'Internal server error',
+    message: 'An unexpected error occurred. Please try again later.'
+  })
 })
 
-app.listen(PORT, () => console.log(`Backend listening on http://localhost:${PORT}`))
+/**
+ * Handle 404 for unmatched routes
+ */
+app.use('*', (req, res) => {
+  res.status(404).json({
+    error: 'Not found',
+    message: `Route ${req.originalUrl} not found`,
+    available_endpoints: {
+      health: 'GET /health',
+      auth: 'POST /api/auth/register, POST /api/auth/login',
+      chat: 'POST /api/chatbot/message',
+      appointments: 'POST /api/chatbot/confirm',
+      history: 'GET /api/chat_sessions/:id/messages'
+    }
+  })
+})
+
+/**
+ * Start the Express server
+ * Logs startup information for monitoring and debugging
+ */
+app.listen(PORT, () => {
+  console.log(`🚀 Dental AI Chatbot Backend Server`)
+  console.log(`📍 Running at: http://localhost:${PORT}`)
+  console.log(`🔗 Python Service: ${PY_SERVICE_URL}`)
+  console.log(`⚡ Environment: ${process.env.NODE_ENV || 'development'}`)
+  console.log(`📅 Started: ${new Date().toISOString()}`)
+})

@@ -1,31 +1,58 @@
 {
   "name": "dental-chatbot-frontend",
-  "version": "0.2.0",
+  "version": "1.0.0",
+  "description": "React frontend for Dental AI Chatbot with modern UI and appointment scheduling",
   "private": true,
   "type": "module",
+  "author": "Dental AI Team",
+  "license": "MIT",
+  "keywords": [
+    "react",
+    "dental",
+    "chatbot",
+    "frontend",
+    "vite",
+    "appointments"
+  ],
   "scripts": {
-    "dev": "vite",
+    "dev": "vite --host",
     "build": "vite build",
-    "preview": "vite preview",
+    "preview": "vite preview --host",
     "test": "vitest",
     "test:ui": "vitest --ui",
-    "test:coverage": "vitest --coverage"
+    "test:coverage": "vitest --coverage --reporter=verbose",
+    "lint": "echo 'Linting with ESLint would go here'",
+    "clean": "rm -rf dist node_modules"
   },
   "dependencies": {
     "react": "^18.2.0",
     "react-dom": "^18.2.0"
   },
   "devDependencies": {
-    "@vitejs/plugin-react": "^4.2.0",
-    "vite": "^5.0.0",
-    "vitest": "^1.6.0",
-    "@testing-library/react": "^14.3.1",
     "@testing-library/jest-dom": "^6.4.6",
+    "@testing-library/react": "^14.3.1",
     "@testing-library/user-event": "^14.5.2",
-    "jsdom": "^24.1.1",
+    "@vitejs/plugin-react": "^4.2.0",
     "@vitest/coverage-v8": "^1.6.0",
-    "typescript": "^5.5.4",
-    "@types/react": "^18.3.5",
-    "@types/react-dom": "^18.3.0"
-  }
+    "jsdom": "^24.1.1",
+    "vite": "^5.0.0",
+    "vitest": "^1.6.0"
+  },
+  "engines": {
+    "node": ">=18.0.0",
+    "npm": ">=9.0.0"
+  },
+  "browserslist": [
+    "> 1%",
+    "last 2 versions",
+    "not dead"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/dental-ai/chatbot-frontend"
+  },
+  "bugs": {
+    "url": "https://github.com/dental-ai/chatbot-frontend/issues"
+  },
+  "homepage": "https://github.com/dental-ai/chatbot-frontend#readme"
 }

@@ -1,0 +1,124 @@
+{
+  // ================================
+  // Dental AI Chatbot - VS Code Workspace Settings
+  // ================================
+  //
+  // This file configures VS Code workspace-specific settings for optimal
+  // development experience across the multi-language project stack.
+  //
+  // @version 1.0.0
+  // ================================
+  // General Editor Configuration
+  // ================================
+  "editor.tabSize": 2,
+  "editor.insertSpaces": true,
+  "editor.detectIndentation": false,
+  "editor.formatOnSave": true,
+  "editor.codeActionsOnSave": {
+    "source.fixAll.eslint": "explicit",
+    "source.organizeImports": "explicit"
+  },
+  // ================================
+  // File Associations & Patterns
+  // ================================
+  "files.associations": {
+    "*.jsx": "javascriptreact",
+    "*.ts": "typescript",
+    "*.sql": "sql",
+    ".env*": "dotenv"
+  },
+  "files.exclude": {
+    "**/node_modules": true,
+    "**/__pycache__": true,
+    "**/.pytest_cache": true,
+    "**/dist": true,
+    "**/build": true
+  },
+  // ================================
+  // Language-Specific Configuration
+  // ================================
+  // JavaScript/TypeScript Settings
+  "[javascript]": {
+    "editor.tabSize": 2
+  },
+  "[javascriptreact]": {
+    "editor.tabSize": 2
+  },
+  "[typescript]": {
+    "editor.tabSize": 2
+  },
+  // Python Settings
+  "[python]": {
+    "editor.tabSize": 4,
+    "editor.formatOnSave": true
+  },
+  "python.defaultInterpreterPath": "./python_service/venv/bin/python",
+  "python.terminal.activateEnvironment": true,
+  "python.linting.enabled": true,
+  "python.linting.pylintEnabled": false,
+  "python.linting.flake8Enabled": true,
+  // SQL Settings
+  "[sql]": {
+    "editor.tabSize": 2,
+    "editor.insertSpaces": true
+  },
+  // JSON Settings
+  "[json]": {
+    "editor.defaultFormatter": "vscode.json-language-features",
+    "editor.tabSize": 2
+  },
+  "[jsonc]": {
+    "editor.defaultFormatter": "vscode.json-language-features",
+    "editor.tabSize": 2
+  },
+  // ================================
+  // Extension Configuration
+  // ================================
+  // ESLint Configuration
+  "eslint.workingDirectories": [
+    "frontend",
+    "backend"
+  ],
+  "eslint.validate": [
+    "javascript",
+    "javascriptreact"
+  ],
+  // Prettier Configuration
+  "prettier.requireConfig": false,
+  "prettier.semi": true,
+  "prettier.singleQuote": true,
+  "prettier.trailingComma": "es5",
+  // Git Configuration
+  "git.autofetch": true,
+  "git.confirmSync": false,
+  // ================================
+  // Terminal Configuration
+  // ================================
+  "terminal.integrated.defaultProfile.windows": "PowerShell",
+  "terminal.integrated.cwd": "${workspaceFolder}",
+  // ================================
+  // Search & Discovery
+  // ================================
+  "search.exclude": {
+    "**/node_modules": true,
+    "**/dist": true,
+    "**/build": true,
+    "**/__pycache__": true,
+    "**/.pytest_cache": true,
+    "**/coverage": true,
+    "**/.nyc_output": true
+  },
+  // ================================
+  // IntelliSense & Type Checking
+  // ================================
+  "typescript.preferences.importModuleSpecifier": "relative",
+  "javascript.preferences.importModuleSpecifier": "relative",
+  "emmet.includeLanguages": {
+    "javascript": "javascriptreact"
+  },
+  // ================================
+  // Docker & Development
+  // ================================
+  "docker.dockerComposeBuild": true,
+  "docker.dockerComposeDetached": true
+}

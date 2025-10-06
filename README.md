@@ -1,7 +1,11 @@
-# 🦷 Dental AI Chatbot — Full Stack Take-Home
+# 🦷 Dental AI Chatbot
 
-This project implements an **AI-powered dental clinic assistant** that lets users book appointments through a chatbot interface.  
-It consists of a **FastAPI Python microservice** for natural language understanding and a **Node.js/Express backend** with Postgres for persistence.
+[![Version](https://img.shields.io/badge/version-1.0.0-blue.svg)](https://github.com/dental-ai/chatbot)
+[![Node.js](https://img.shields.io/badge/node.js-18%2B-green.svg)](https://nodejs.org/)
+[![Python](https://img.shields.io/badge/python-3.8%2B-blue.svg)](https://python.org/)
+[![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+
+A modern, AI-powered dental appointment scheduling chatbot built with React, Node.js, and LangChain. Features intelligent natural language understanding, seamless appointment booking, and a beautiful user interface.
 
 ---
 
