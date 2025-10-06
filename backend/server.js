@@ -8,6 +8,17 @@ import morgan from 'morgan'
 import rateLimit from 'express-rate-limit'
 import jwt from 'jsonwebtoken'
 import { query } from './db.js'
+import {
+  createUser,
+  authenticateUser,
+  getUserById,
+  updateUser,
+  changePassword,
+  generateToken,
+  authMiddleware,
+  optionalAuthMiddleware,
+  AuthError
+} from './auth.js'
 
 const app = express()
 const PORT = process.env.PORT || 8000
@@ -69,7 +80,127 @@ app.get('/health/python', async (_req, res) => {
   }
 })
 
-/* ---------- Token ---------- */
+/* ---------- Authentication Routes ---------- */
+app.post('/api/auth/register', async (req, res) => {
+  try {
+    const { email, password, name, phone, dateOfBirth } = req.body
+
+    // Validation
+    if (!email || !password || !name) {
+      return res.status(400).json({ error: 'Email, password, and name are required' })
+    }
+
+    if (password.length < 8) {
+      return res.status(400).json({ error: 'Password must be at least 8 characters' })
+    }
+
+    const user = await createUser({ email, password, name, phone, dateOfBirth })
+    const token = generateToken({ sub: user.id, email: user.email, role: 'user' })
+
+    res.status(201).json({
+      user: {
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        phone: user.phone,
+        created_at: user.created_at
+      },
+      token,
+      expires_in: '24h'
+    })
+  } catch (error) {
+    if (error instanceof AuthError) {
+      return res.status(error.statusCode).json({ error: error.message })
+    }
+    console.error('Registration error:', error)
+    res.status(500).json({ error: 'Registration failed' })
+  }
+})
+
+app.post('/api/auth/login', async (req, res) => {
+  try {
+    const { email, password } = req.body
+
+    if (!email || !password) {
+      return res.status(400).json({ error: 'Email and password are required' })
+    }
+
+    const user = await authenticateUser(email, password)
+    const token = generateToken({ sub: user.id, email: user.email, role: 'user' })
+
+    res.json({
+      user: {
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        phone: user.phone,
+        is_active: user.is_active
+      },
+      token,
+      expires_in: '24h'
+    })
+  } catch (error) {
+    if (error instanceof AuthError) {
+      return res.status(error.statusCode).json({ error: error.message })
+    }
+    console.error('Login error:', error)
+    res.status(500).json({ error: 'Login failed' })
+  }
+})
+
+app.get('/api/auth/profile', authMiddleware, async (req, res) => {
+  try {
+    const user = await getUserById(req.user.sub)
+    res.json({ user })
+  } catch (error) {
+    if (error instanceof AuthError) {
+      return res.status(error.statusCode).json({ error: error.message })
+    }
+    console.error('Profile error:', error)
+    res.status(500).json({ error: 'Failed to get profile' })
+  }
+})
+
+app.put('/api/auth/profile', authMiddleware, async (req, res) => {
+  try {
+    const { name, phone, dateOfBirth } = req.body
+    const updates = { name, phone, date_of_birth: dateOfBirth }
+    
+    const user = await updateUser(req.user.sub, updates)
+    res.json({ user })
+  } catch (error) {
+    if (error instanceof AuthError) {
+      return res.status(error.statusCode).json({ error: error.message })
+    }
+    console.error('Profile update error:', error)
+    res.status(500).json({ error: 'Failed to update profile' })
+  }
+})
+
+app.post('/api/auth/change-password', authMiddleware, async (req, res) => {
+  try {
+    const { currentPassword, newPassword } = req.body
+
+    if (!currentPassword || !newPassword) {
+      return res.status(400).json({ error: 'Current and new passwords are required' })
+    }
+
+    if (newPassword.length < 8) {
+      return res.status(400).json({ error: 'New password must be at least 8 characters' })
+    }
+
+    await changePassword(req.user.sub, currentPassword, newPassword)
+    res.json({ message: 'Password changed successfully' })
+  } catch (error) {
+    if (error instanceof AuthError) {
+      return res.status(error.statusCode).json({ error: error.message })
+    }
+    console.error('Password change error:', error)
+    res.status(500).json({ error: 'Failed to change password' })
+  }
+})
+
+/* ---------- Legacy Token (for demo/testing) ---------- */
 app.post('/api/chatbot/token', async (_req, res) => {
   const payload = { sub: 'user_1', role: 'user' }
   const token = jwt.sign(payload, JWT_SECRET, { expiresIn: '5m' })
@@ -77,7 +208,7 @@ app.post('/api/chatbot/token', async (_req, res) => {
   res.json({ token, expires_in: 300 })
 })
 
-/* ---------- Auth ---------- */
+/* ---------- Legacy Auth (keeping for backward compatibility) ---------- */
 function auth(req, res, next){
   const hdr = req.headers['authorization'] || ''
   const token = hdr.startsWith('Bearer ') ? hdr.slice(7) : null
